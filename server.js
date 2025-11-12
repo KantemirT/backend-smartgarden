@@ -1,31 +1,17 @@
 // server.js
-const getLocalIP = () => {
-  const interfaces = require('os').networkInterfaces();
-  for (const name of Object.keys(interfaces)) {
-    for (const interface of interfaces[name]) {
-      if (interface.family === 'IPv4' && !interface.internal) {
-        return interface.address;
-      }
-    }
-  }
-  return 'localhost';
-};
-
-const LOCAL_IP = getLocalIP();
-console.log('🚀 Server IPs:', {
-  local: `http://localhost:${PORT}`,
-  network: `http://${LOCAL_IP}:${PORT}`,
-  timestamp: new Date().toISOString()
-});
-
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
 require('dotenv').config();
 
 const app = express();
+
+// Middleware
 app.use(cors());
 app.use(express.json());
+
+// Авто-определение порта для Render
+const PORT = process.env.PORT || 3000;
 
 // Подключение к PostgreSQL
 const pool = new Pool({
@@ -34,6 +20,8 @@ const pool = new Pool({
   database: process.env.DB_NAME || 'smart_garden',
   password: process.env.DB_PASSWORD || '1',
   port: process.env.DB_PORT || 5432,
+  // Для Render PostgreSQL (если добавите позже)
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
 // МОДЕЛИ (остаются без изменений)
@@ -443,6 +431,139 @@ app.get('/api/users', async (req, res) => {
   }
 });
 
+// ==================== API ДАННЫХ САДА ====================
+
+// Получение текущих данных сада
+app.get('/api/garden/:gardenId/current-data', async (req, res) => {
+  try {
+    const { gardenId } = req.params;
+    
+    console.log(`Получение данных сада для gardenId: ${gardenId}`);
+    
+    // В реальном приложении здесь будет запрос к БД
+    // Пока используем реалистичные мок-данные
+    const gardenData = {
+      id: parseInt(gardenId),
+      temperature: 24 + Math.floor(Math.random() * 5),
+      humidity: 65 + Math.floor(Math.random() * 10),
+      lightLevel: 1200 + Math.floor(Math.random() * 200),
+      soilMoisture: 45 + Math.floor(Math.random() * 10),
+      co2Level: 420 + Math.floor(Math.random() * 30),
+      weatherDescription: 'ясно',
+      lastUpdate: new Date().toISOString()
+    };
+
+    console.log('Отправка данных сада:', gardenData);
+
+    res.json({
+      success: true,
+      data: gardenData
+    });
+  } catch (error) {
+    console.error('Garden data error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Ошибка получения данных сада: ' + error.message
+    });
+  }
+});
+
+// Получение данных фертигации
+app.get('/api/garden/:gardenId/fertigation-recipes', async (req, res) => {
+  try {
+    const { gardenId } = req.params;
+    
+    console.log(`Получение данных фертигации для gardenId: ${gardenId}`);
+    
+    const fertigationData = {
+      id: parseInt(gardenId),
+      pH: 6.5,
+      ec: 2.1,
+      nutrients: {
+        nitrogen: 150,
+        phosphorus: 50,
+        potassium: 200,
+        calcium: 120,
+        magnesium: 60
+      },
+      schedule: 'каждые 4 часа',
+      recommendations: 'Все показатели в норме. Продолжайте текущий режим фертигации.',
+      lastUpdate: new Date().toISOString()
+    };
+
+    res.json({
+      success: true,
+      data: fertigationData
+    });
+  } catch (error) {
+    console.error('Fertigation data error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Ошибка получения данных фертигации: ' + error.message
+    });
+  }
+});
+
+// Получение экономических данных
+app.get('/api/garden/:gardenId/economics', async (req, res) => {
+  try {
+    const { gardenId } = req.params;
+    
+    console.log(`Получение экономических данных для gardenId: ${gardenId}`);
+    
+    const economicsData = {
+      id: parseInt(gardenId),
+      costs: 15000,
+      revenue: 45000,
+      profit: 30000,
+      yield: 1200,
+      efficiency: 85,
+      lastUpdate: new Date().toISOString()
+    };
+
+    res.json({
+      success: true,
+      data: economicsData
+    });
+  } catch (error) {
+    console.error('Economics data error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Ошибка получения экономических данных: ' + error.message
+    });
+  }
+});
+
+// Получение рекомендаций и данных о заболеваниях
+app.get('/api/garden/:gardenId/complex-recommendations', async (req, res) => {
+  try {
+    const { gardenId } = req.params;
+    
+    console.log(`Получение рекомендаций для gardenId: ${gardenId}`);
+    
+    const diseaseData = {
+      id: parseInt(gardenId),
+      risk: 'низкий',
+      recommendations: 'Профилактическая обработка не требуется. Поддерживайте текущие условия.',
+      lastInspection: new Date().toISOString().split('T')[0],
+      issues: [],
+      activeIssues: [],
+      lastUpdate: new Date().toISOString()
+    };
+
+    res.json({
+      success: true,
+      data: diseaseData
+    });
+  } catch (error) {
+    console.error('Disease data error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Ошибка получения данных о заболеваниях: ' + error.message
+    });
+  }
+});
+
 // Health check
 app.get('/api/health', async (req, res) => {
   try {
@@ -451,7 +572,8 @@ app.get('/api/health', async (req, res) => {
       success: true,
       status: 'healthy',
       database: 'connected',
-      timestamp: new Date()
+      timestamp: new Date(),
+      environment: process.env.NODE_ENV || 'development'
     });
   } catch (error) {
     res.json({
@@ -459,7 +581,8 @@ app.get('/api/health', async (req, res) => {
       status: 'unhealthy',
       database: 'disconnected',
       error: error.message,
-      timestamp: new Date()
+      timestamp: new Date(),
+      environment: process.env.NODE_ENV || 'development'
     });
   }
 });
@@ -469,7 +592,8 @@ app.get('/api/test', (req, res) => {
   res.json({ 
     success: true,
     message: 'Backend работает!',
-    timestamp: new Date()
+    timestamp: new Date(),
+    environment: process.env.NODE_ENV || 'development'
   });
 });
 
@@ -489,8 +613,6 @@ app.use((error, req, res, next) => {
     message: 'Internal server error'
   });
 });
-
-const PORT = process.env.PORT || 3000;
 
 async function startServer() {
   try {
@@ -530,15 +652,13 @@ async function startServer() {
     client.release();
   } catch (error) {
     console.error('❌ Ошибка подключения к базе данных:', error.message);
+    console.log('⚠️  Работаем без базы данных (мок-данные)');
   }
 
-  // Запускаем сервер на всех интерфейсах
+  // Запускаем сервер
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Сервер запущен на порту ${PORT}`);
-    console.log(`📡 API доступно по:`);
-    console.log(`   http://localhost:${PORT}/api`);
-    console.log(`   http://127.0.0.1:${PORT}/api`);
-    console.log(`   http://[YOUR_IP]:${PORT}/api`);
+    console.log(`📡 Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`❤️  Health check: http://localhost:${PORT}/api/health`);
   });
 }
