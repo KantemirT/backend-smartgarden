@@ -1,0 +1,31 @@
+{
+  "name": "backend-api",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@expo/vector-icons": "^15.0.3",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-navigation/bottom-tabs": "^6.6.1",
+    "@react-navigation/native": "^6.1.18",
+    "axios": "^1.13.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "expo-crypto": "~15.0.7",
+    "expo-notifications": "~0.32.12",
+    "express": "^5.1.0",
+    "mqtt": "^5.14.1",
+    "pg": "^8.16.3",
+    "react-native-safe-area-context": "^5.6.2",
+    "react-native-screens": "^4.18.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}

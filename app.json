@@ -1,0 +1,13 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "3d733add-2298-4c58-92df-835f393482f2"
+      }
+    },
+    "owner": "kantich",
+    "android": {
+      "package": "com.kantich.backendapi"
+    }
+  }
+}
