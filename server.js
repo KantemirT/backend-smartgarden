@@ -43,7 +43,7 @@ const pool = new Pool(getDatabaseConfig());
 async function initializeDatabase() {
   const client = await pool.connect();
   try {
-    console.log('🔄 Создание таблиц в базе данных...');
+    console.log('🔄 Проверка и создание таблиц в базе данных...');
     
     // Таблица пользователей
     await client.query(`
@@ -88,17 +88,27 @@ async function initializeDatabase() {
       )
     `);
     
-    // Тестовый пользователь
-    await client.query(`
-      INSERT INTO users (name, email, phone, password) 
-      VALUES ('Тестовый пользователь', 'test@example.com', '+79991234567', 'password123')
-      ON CONFLICT (email) DO NOTHING
-    `);
+    // Проверяем существование тестового пользователя перед созданием
+    const userCheck = await client.query(
+      'SELECT id FROM users WHERE phone = $1 OR email = $2',
+      ['+79991234567', 'test@example.com']
+    );
     
-    console.log('✅ Таблицы созданы успешно');
+    if (userCheck.rows.length === 0) {
+      // Создаем тестового пользователя только если его нет
+      await client.query(`
+        INSERT INTO users (name, email, phone, password) 
+        VALUES ('Тестовый пользователь', 'test@example.com', '+79991234567', 'password123')
+      `);
+      console.log('✅ Тестовый пользователь создан');
+    } else {
+      console.log('✅ Тестовый пользователь уже существует');
+    }
+    
+    console.log('✅ База данных готова к работе');
     
   } catch (error) {
-    console.error('❌ Ошибка создания таблиц:', error);
+    console.error('❌ Ошибка инициализации базы данных:', error.message);
   } finally {
     client.release();
   }
