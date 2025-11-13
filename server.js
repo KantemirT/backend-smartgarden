@@ -13,13 +13,31 @@ app.use(express.json());
 // Авто-определение порта для Render
 const PORT = process.env.PORT || 3000;
 
-// Подключение к PostgreSQL
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false  // ОБЯЗАТЕЛЬНО для Render PostgreSQL
+// Умное подключение к БД
+const getDatabaseConfig = () => {
+  // Если есть DATABASE_URL (Render) - используем облачную БД с SSL
+  if (process.env.DATABASE_URL) {
+    console.log('🔗 Подключение к облачной БД Render');
+    return {
+      connectionString: process.env.DATABASE_URL,
+      ssl: {
+        rejectUnauthorized: false
+      }
+    };
   }
-});
+  
+  // Для локальной разработки - используем локальную БД без SSL
+  console.log('💻 Подключение к локальной БД');
+  return {
+    user: process.env.DB_USER || 'postgres',
+    host: process.env.DB_HOST || 'localhost',
+    database: process.env.DB_NAME || 'smart_garden',
+    password: process.env.DB_PASSWORD || '1',
+    port: process.env.DB_PORT || 5432
+  };
+};
+
+const pool = new Pool(getDatabaseConfig());
 
 // Функция инициализации базы данных
 async function initializeDatabase() {
@@ -86,7 +104,7 @@ async function initializeDatabase() {
   }
 }
 
-// МОДЕЛИ (остаются без изменений)
+// МОДЕЛИ
 class PredictionModels {
   predictPhenologicalPhase(weatherData, cropType) {
     const baseTemp = 10;
@@ -746,7 +764,7 @@ async function startServer() {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Сервер запущен на порту ${PORT}`);
     console.log(`📡 Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`🗄️  Database: ${process.env.DB_HOST ? 'Connected' : 'Mock data'}`);
+    console.log(`🗄️  Database: ${process.env.DATABASE_URL ? 'Cloud' : 'Local'}`);
     console.log(`❤️  Health check: https://smart-garden-api.onrender.com/api/health`);
   });
 }
