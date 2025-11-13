@@ -15,14 +15,76 @@ const PORT = process.env.PORT || 3000;
 
 // Подключение к PostgreSQL
 const pool = new Pool({
-  user: process.env.DB_USER || 'postgres',
-  host: process.env.DB_HOST || 'localhost',
-  database: process.env.DB_NAME || 'smart_garden',
-  password: process.env.DB_PASSWORD || '1',
-  port: process.env.DB_PORT || 5432,
-  // Для Render PostgreSQL (если добавите позже)
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false  // ОБЯЗАТЕЛЬНО для Render PostgreSQL
+  }
 });
+
+// Функция инициализации базы данных
+async function initializeDatabase() {
+  const client = await pool.connect();
+  try {
+    console.log('🔄 Создание таблиц в базе данных...');
+    
+    // Таблица пользователей
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        email VARCHAR(100) UNIQUE,
+        phone VARCHAR(20) UNIQUE,
+        password VARCHAR(255) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    // Таблица данных сада
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS garden_data (
+        id SERIAL PRIMARY KEY,
+        garden_id INTEGER NOT NULL,
+        temperature DECIMAL(4,2),
+        humidity DECIMAL(4,2),
+        light_level INTEGER,
+        soil_moisture DECIMAL(4,2),
+        co2_level INTEGER,
+        weather_description VARCHAR(100),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    // Таблица настроек полива
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS watering_settings (
+        id SERIAL PRIMARY KEY,
+        garden_id INTEGER NOT NULL,
+        is_watering BOOLEAN DEFAULT false,
+        time_left INTEGER DEFAULT 0,
+        end_time TIMESTAMP,
+        selected_hours INTEGER DEFAULT 0,
+        selected_minutes INTEGER DEFAULT 10,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    // Тестовый пользователь
+    await client.query(`
+      INSERT INTO users (name, email, phone, password) 
+      VALUES ('Тестовый пользователь', 'test@example.com', '+79991234567', 'password123')
+      ON CONFLICT (email) DO NOTHING
+    `);
+    
+    console.log('✅ Таблицы созданы успешно');
+    
+  } catch (error) {
+    console.error('❌ Ошибка создания таблиц:', error);
+  } finally {
+    client.release();
+  }
+}
 
 // МОДЕЛИ (остаются без изменений)
 class PredictionModels {
@@ -564,6 +626,57 @@ app.get('/api/garden/:gardenId/complex-recommendations', async (req, res) => {
   }
 });
 
+// Сохранение данных сада в БД
+app.post('/api/garden/:gardenId/data', async (req, res) => {
+  try {
+    const { gardenId } = req.params;
+    const { temperature, humidity, lightLevel, soilMoisture, co2Level, weatherDescription } = req.body;
+
+    const result = await pool.query(
+      `INSERT INTO garden_data (garden_id, temperature, humidity, light_level, soil_moisture, co2_level, weather_description)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [gardenId, temperature, humidity, lightLevel, soilMoisture, co2Level, weatherDescription]
+    );
+
+    res.json({
+      success: true,
+      data: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Save garden data error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Ошибка сохранения данных сада'
+    });
+  }
+});
+
+// Получение истории данных сада
+app.get('/api/garden/:gardenId/history', async (req, res) => {
+  try {
+    const { gardenId } = req.params;
+    
+    const result = await pool.query(
+      `SELECT * FROM garden_data 
+       WHERE garden_id = $1 
+       ORDER BY created_at DESC 
+       LIMIT 50`,
+      [gardenId]
+    );
+
+    res.json({
+      success: true,
+      data: result.rows
+    });
+  } catch (error) {
+    console.error('Get garden history error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Ошибка получения истории данных'
+    });
+  }
+});
+
 // Health check
 app.get('/api/health', async (req, res) => {
   try {
@@ -616,40 +729,14 @@ app.use((error, req, res, next) => {
 
 async function startServer() {
   try {
+    // Инициализируем базу данных
+    await initializeDatabase();
+    
+    // Проверяем подключение
     const client = await pool.connect();
     console.log('✅ База данных подключена успешно');
-    
-    // Проверяем существование таблицы пользователей
-    try {
-      await client.query('SELECT 1 FROM users LIMIT 1');
-      console.log('✅ Таблица users существует');
-    } catch (error) {
-      console.log('❌ Таблица users не существует, создаем...');
-      
-      // Создаем таблицу пользователей
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS users (
-          id SERIAL PRIMARY KEY,
-          name VARCHAR(100) NOT NULL,
-          email VARCHAR(100) UNIQUE,
-          phone VARCHAR(20) UNIQUE,
-          password VARCHAR(255) NOT NULL,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-      
-      // Создаем тестового пользователя
-      await client.query(`
-        INSERT INTO users (name, email, phone, password) 
-        VALUES ('Тестовый пользователь', 'user@example.com', '+79991234567', 'password')
-        ON CONFLICT (email) DO NOTHING
-      `);
-      
-      console.log('✅ Таблица users создана успешно');
-    }
-    
     client.release();
+    
   } catch (error) {
     console.error('❌ Ошибка подключения к базе данных:', error.message);
     console.log('⚠️  Работаем без базы данных (мок-данные)');
@@ -659,7 +746,8 @@ async function startServer() {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Сервер запущен на порту ${PORT}`);
     console.log(`📡 Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`❤️  Health check: http://localhost:${PORT}/api/health`);
+    console.log(`🗄️  Database: ${process.env.DB_HOST ? 'Connected' : 'Mock data'}`);
+    console.log(`❤️  Health check: https://smart-garden-api.onrender.com/api/health`);
   });
 }
 
